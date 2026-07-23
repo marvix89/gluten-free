@@ -6,8 +6,15 @@ export class OpenFoodFactsProvider implements IProductEnrichmentProvider {
   
   // Richiesto dalle guidelines OFF per uso responsabile
   private readonly headers = {
-    'User-Agent': 'gluten-free-app/1.0 - Web Application - https://github.com/marvix89/gluten-free'
+    'User-Agent': 'gluten-free-app/1.0 - Web Application - https://github.com/marvix89/gluten-free',
+    'Accept': 'application/json'
   };
+
+  // Domini da provare in ordine di priorità
+  private readonly searchDomains = [
+    'https://it.openfoodfacts.org',   // Più stabile per prodotti italiani
+    'https://world.openfoodfacts.org', // Fallback globale
+  ];
 
   async fetchByBarcode(barcode: string): Promise<ProductEnrichmentData | null> {
     try {
@@ -232,30 +239,62 @@ export class OpenFoodFactsProvider implements IProductEnrichmentProvider {
     return { id: 'personalizzato', label: 'Personalizzato', emoji: '⭐', color: '#f59e0b', level: 3, confidence: 0.15, method: 'Richiesta Analisi Visiva Fallback' };
   }
 
+  /**
+   * Esegue una singola chiamata HTTP con retry verso un dato URL.
+   * Ritorna il Response JSON oppure null se tutti i tentativi falliscono.
+   */
+  private async fetchWithRetry(url: string, maxRetries = 5): Promise<Response | null> {
+    let response: Response | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      try {
+        response = await fetch(url, { headers: this.headers, signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        const ct = response.headers.get('content-type') || '';
+        const isJson = ct.includes('application/json');
+
+        if (response.ok && isJson) {
+          return response; // Successo
+        }
+
+        // Errori definitivi: non ha senso riprovare
+        if ([400, 404].includes(response.status)) {
+          console.warn(`OFF API error ${response.status} (non-retryable) for ${url}`);
+          return null;
+        }
+
+        // 503/401/429/502 oppure risposta HTML → riprova dopo delay
+        const waitMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s, 16s, 32s
+        console.warn(`OFF API ${response.status} (json=${isJson}), attempt ${attempt}/${maxRetries}, retry in ${waitMs}ms`);
+        await new Promise(r => setTimeout(r, waitMs));
+
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        const waitMs = Math.pow(2, attempt) * 1000;
+        console.warn(`OFF API fetch error attempt ${attempt}/${maxRetries}: ${fetchErr?.message}, retry in ${waitMs}ms`);
+        if (attempt === maxRetries) return null;
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+    }
+
+    return null;
+  }
+
   async searchProducts(query: string, locale: string, page: number = 1, pageSize: number = 25): Promise<PaginatedResult<Product>> {
     try {
-      const url = new URL('https://world.openfoodfacts.org/cgi/search.pl');
+      const params = new URLSearchParams();
       if (query) {
-        url.searchParams.append('search_terms', query);
+        params.append('brands_tags_it', query);
       }
-      url.searchParams.append('search_simple', '1');
-      url.searchParams.append('action', 'process');
-      url.searchParams.append('json', '1');
-      url.searchParams.append('page', page.toString());
-      url.searchParams.append('page_size', pageSize.toString());
-      url.searchParams.append('lc', locale);
-      
-      // Filtra solo prodotti senza glutine (usiamo il label positivo per evitare timeout dell'API)
-      url.searchParams.append('tagtype_0', 'labels');
-      url.searchParams.append('tag_contains_0', 'contains');
-      url.searchParams.append('tag_0', 'en:gluten-free');
-      
-      // Filtra solo prodotti disponibili in Italia
-      url.searchParams.append('tagtype_1', 'countries');
-      url.searchParams.append('tag_contains_1', 'contains');
-      url.searchParams.append('tag_1', 'en:italy');
-      
-      const fields = [
+      params.append('page', page.toString());
+      params.append('page_size', pageSize.toString());
+      params.append('lc', locale);
+      params.append('labels_tags_en', 'gluten-free');
+      params.append('countries_tags_en', 'italy');
+      params.append('fields', [
         'code',
         'product_name',
         'product_name_it',
@@ -272,40 +311,23 @@ export class OpenFoodFactsProvider implements IProductEnrichmentProvider {
         'categories',
         'categories_tags',
         'quantity'
-      ].join(',');
-      url.searchParams.append('fields', fields);
+      ].join(','));
 
-      // Retry con backoff esponenziale per errori temporanei (503, 429, 502)
-      const MAX_RETRIES = 3;
+      // Tenta ogni dominio in ordine: il primo che risponde con JSON valido vince.
       let response: Response | null = null;
-      let lastError: Error | null = null;
-
-      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-        try {
-          response = await fetch(url.toString(), { headers: this.headers, signal: controller.signal });
-          clearTimeout(timeoutId);
-
-          // Successo o errore non recuperabile → esci dal loop
-          if (response.ok || ![429, 502, 503, 504].includes(response.status)) break;
-
-          // Errore recuperabile → attendi e riprova
-          const waitMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
-          console.warn(`OFF API returned ${response.status}, retry ${attempt}/${MAX_RETRIES} in ${waitMs}ms`);
-          await new Promise(r => setTimeout(r, waitMs));
-        } catch (fetchErr) {
-          clearTimeout(timeoutId);
-          lastError = fetchErr as Error;
-          if (attempt === MAX_RETRIES) throw lastError;
-          const waitMs = Math.pow(2, attempt - 1) * 1000;
-          console.warn(`OFF API fetch error, retry ${attempt}/${MAX_RETRIES} in ${waitMs}ms:`, fetchErr);
-          await new Promise(r => setTimeout(r, waitMs));
+      for (const domain of this.searchDomains) {
+        const url = `${domain}/api/v2/search?${params.toString()}`;
+        console.log(`[OFF] Trying ${domain} (page ${page})...`);
+        response = await this.fetchWithRetry(url, 5);
+        if (response) {
+          console.log(`[OFF] Success from ${domain}`);
+          break;
         }
+        console.warn(`[OFF] ${domain} unreachable, trying next domain...`);
       }
 
-      if (!response || !response.ok) {
-        throw new Error(`OpenFoodFacts Search API error: ${response?.status ?? 'no response'}`);
+      if (!response) {
+        throw new Error('OpenFoodFacts Search API: tutti i domini sono irraggiungibili');
       }
 
       const data = await response.json();

@@ -154,86 +154,131 @@ export default function AdminDashboardClient() {
     }
   };
 
-  const startOrResumeSync = async (e?: React.FormEvent, resumeFromState = false) => {
+  const startOrResumeSync = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSyncing(true);
     isSyncingRef.current = true;
-    setMessage({ type: 'info', text: 'Importazione prodotti avviata...' });
+    updateSyncState(null);
 
-    let currentQuery = query;
-    let startPage = 1;
+    // Su Vercel ogni invocazione serverless ha un IP diverso → loop lato client.
+    // In locale il server ha sempre lo stesso IP → bulk-import SSE con delay.
+    const isVercel = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 
-    if (resumeFromState && syncState) {
-      currentQuery = syncState.query;
-      startPage = syncState.currentPage + 1;
+    if (isVercel) {
+      // ── MODALITÀ VERCEL: loop client-side, ogni pagina = IP diverso ──────────
+      setMessage({ type: 'info', text: '🚀 Import avviato (modalità Vercel — IP multipli)...' });
+      let currentPage = 1;
+      let totalPages = 0; // verrà impostato dalla prima risposta
+      let totalImported = 0;
+      const PAGE_SIZE = 100;
+      // Delay più breve su Vercel perché ogni call arriva da IP diverso
+      const VERCEL_DELAY_MS = 1500;
+
+      try {
+        while (isSyncingRef.current && (currentPage === 1 || currentPage <= totalPages)) {
+          let pageData: any = null;
+          let attempts = 0;
+          while (!pageData && attempts < 5 && isSyncingRef.current) {
+            attempts++;
+            try {
+              const res = await fetch('/api/admin/auto-import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ q: query, page: currentPage, limit: PAGE_SIZE }),
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              pageData = await res.json();
+            } catch (err: any) {
+              if (!isSyncingRef.current) break;
+              const wait = attempts * 3000;
+              setMessage({ type: 'error', text: `Pagina ${currentPage}, tentativo ${attempts}/5: ${err.message}. Riprovo tra ${wait / 1000}s...` });
+              await new Promise(r => setTimeout(r, wait));
+            }
+          }
+          if (!pageData || !isSyncingRef.current) break;
+
+          // Imposta totalPages dalla prima risposta reale
+          if (currentPage === 1) {
+            totalPages = pageData.pageCount || 1;
+            setMessage({ type: 'info', text: `📊 Trovati ${pageData.totalCount} prodotti — ${totalPages} pagine da importare` });
+          }
+          totalImported += pageData.count || 0;
+          updateSyncState({ query, currentPage, totalPages, totalProducts: totalImported });
+          if (currentPage % 5 === 0) fetchLocalProducts(1, pageSize);
+
+          setMessage({ type: 'info', text: `📦 Pagina ${currentPage}/${totalPages} — ${totalImported} prodotti importati` });
+
+          if (currentPage >= totalPages) {
+            setMessage({ type: 'success', text: `✅ Import completato! ${totalImported} prodotti in ${totalPages} pagine.` });
+            updateSyncState(null);
+            fetchLocalProducts(1, pageSize);
+            break;
+          }
+          currentPage++;
+          if (isSyncingRef.current) await new Promise(r => setTimeout(r, VERCEL_DELAY_MS));
+        }
+      } catch (err: any) {
+        setMessage({ type: 'error', text: `Errore critico: ${err?.message}` });
+      }
+
     } else {
-      updateSyncState(null);
-    }
+      // ── MODALITÀ LOCALE: bulk-import SSE con delay anti-rate-limit ───────────
+      setMessage({ type: 'info', text: '⏳ Import locale avviato — delay automatici anti-blocco tra le pagine...' });
 
-    let currentPage = startPage;
-    let totalPages = syncState?.totalPages || 999;
+      try {
+        const res = await fetch('/api/admin/bulk-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ q: query, pageSize: 100 }),
+        });
 
-    try {
-      while (isSyncingRef.current && currentPage <= totalPages) {
-        let success = false;
-        let pageData: any = null;
+        if (!res.ok || !res.body) throw new Error(`Errore avvio import: ${res.status}`);
 
-        while (!success && isSyncingRef.current) {
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 20000);
-            const res = await fetch('/api/admin/auto-import', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ q: currentQuery, page: currentPage, limit: 100 }),
-              signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            if (!res.ok) throw new Error(`Errore Server (Codice: ${res.status})`);
-            pageData = await res.json();
-            success = true;
-          } catch (err: any) {
-            if (!isSyncingRef.current) break;
-            setMessage({ type: 'error', text: `Errore a pagina ${currentPage}: ${err.message}. Riprovo tra 5s...` });
-            await new Promise(resolve => setTimeout(resolve, 5000));
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (isSyncingRef.current) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() ?? '';
+
+          for (const part of parts) {
+            const eventLine = part.match(/^event: (\S+)/);
+            const dataLine = part.match(/^data: (.+)$/m);
+            if (!eventLine || !dataLine) continue;
+
+            const eventType = eventLine[1];
+            let data: any = {};
+            try { data = JSON.parse(dataLine[1]); } catch { continue; }
+
+            if (eventType === 'progress') {
+              if (data.type === 'page_done') {
+                updateSyncState({ query, currentPage: data.page, totalPages: data.totalPages, totalProducts: data.totalImported });
+                if (data.page % 5 === 0) fetchLocalProducts(1, pageSize);
+              }
+              setMessage({ type: 'info', text: data.message || '' });
+            } else if (eventType === 'done') {
+              setMessage({ type: 'success', text: `✅ ${data.message}` });
+              updateSyncState(null);
+              fetchLocalProducts(1, pageSize);
+            } else if (eventType === 'error') {
+              setMessage({ type: 'error', text: `❌ ${data.message}` });
+            }
           }
         }
-
-        if (!isSyncingRef.current) break;
-
-        totalPages = pageData.pageCount || 1;
-        updateSyncState({
-          query: currentQuery,
-          currentPage: currentPage,
-          totalPages: totalPages,
-          totalProducts: pageData.totalCount || 0
-        });
-
-        fetchLocalProducts(1, pageSize);
-
-        setMessage({
-          type: 'info',
-          text: `Pagina ${currentPage}/${totalPages} importata — ${pageData.count || 0} prodotti. (Solo dati, le immagini si sincronizzano nel tab 🖼️)`
-        });
-
-        if (currentPage >= totalPages) {
-          setMessage({ type: 'success', text: `✅ Import completato! ${totalPages} pagine, ${pageData.totalCount || 0} prodotti totali. Ora puoi sincronizzare le immagini nel tab 🖼️.` });
-          updateSyncState(null);
-          break;
-        }
-
-        currentPage++;
-        if (isSyncingRef.current) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        }
+      } catch (err: any) {
+        setMessage({ type: 'error', text: `Errore critico: ${err?.message}` });
       }
-    } catch (err) {
-      setMessage({ type: 'error', text: `Errore critico: ${(err as Error).message}` });
-    } finally {
-      setIsSyncing(false);
-      isSyncingRef.current = false;
     }
+
+    setIsSyncing(false);
+    isSyncingRef.current = false;
   };
+
 
   const stopSync = () => {
     isSyncingRef.current = false;
@@ -740,8 +785,8 @@ export default function AdminDashboardClient() {
                     </button>
                   ) : (
                     <>
-                      <button onClick={() => startOrResumeSync(undefined, true)} className="btn-primary" style={{ background: '#10b981', borderColor: '#10b981' }}>
-                        ▶ Riprendi da pagina {syncState.currentPage + 1}
+                      <button onClick={() => startOrResumeSync()} className="btn-primary" style={{ background: '#10b981', borderColor: '#10b981' }}>
+                        ▶ Riavvia Import
                       </button>
                       <button onClick={clearSync} style={{ padding: '0.6rem 1.25rem', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>
                         Annulla
@@ -751,7 +796,7 @@ export default function AdminDashboardClient() {
                 </div>
               </div>
             ) : (
-              <form onSubmit={(e) => startOrResumeSync(e, false)} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <form onSubmit={(e) => startOrResumeSync(e)} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <input
                   id="off-search-query"
                   type="text"
