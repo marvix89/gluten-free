@@ -248,7 +248,7 @@ export class OpenFoodFactsProvider implements IProductEnrichmentProvider {
       // Filtra solo prodotti senza glutine (usiamo il label positivo per evitare timeout dell'API)
       url.searchParams.append('tagtype_0', 'labels');
       url.searchParams.append('tag_contains_0', 'contains');
-      url.searchParams.append('tag_0', 'en:no-gluten');
+      url.searchParams.append('tag_0', 'en:gluten-free');
       
       // Filtra solo prodotti disponibili in Italia
       url.searchParams.append('tagtype_1', 'countries');
