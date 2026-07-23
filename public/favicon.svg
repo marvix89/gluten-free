@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="gf-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="url(#gf-gradient)" />
+  <!-- Wheat stalk -->
+  <line x1="32" y1="52" x2="32" y2="18" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Wheat grains left -->
+  <ellipse cx="25" cy="28" rx="5" ry="3" fill="#fff" transform="rotate(-30 25 28)"/>
+  <ellipse cx="24" cy="37" rx="5" ry="3" fill="#fff" transform="rotate(-30 24 37)"/>
+  <!-- Wheat grains right -->
+  <ellipse cx="39" cy="28" rx="5" ry="3" fill="#fff" transform="rotate(30 39 28)"/>
+  <ellipse cx="40" cy="37" rx="5" ry="3" fill="#fff" transform="rotate(30 40 37)"/>
+  <!-- Top grain -->
+  <ellipse cx="32" cy="20" rx="3" ry="5" fill="#fff"/>
+  <!-- Crossed-out line (symbol for gluten-free) -->
+  <circle cx="32" cy="32" r="27" fill="none" stroke="#fff" stroke-width="2.5" stroke-opacity="0.3"/>
+  <line x1="14" y1="50" x2="50" y2="14" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-opacity="0.85"/>
+</svg>
