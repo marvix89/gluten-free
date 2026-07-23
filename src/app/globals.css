@@ -9,68 +9,68 @@
 
 /* ---- LIGHT THEME (default) ---- */
 :root {
-  /* Palette ispirata ai loghi italiani "senza lattosio" (Lfree, Alta Romagna…):
-     verde acqua, teal, azzurro cielo, bianco latte */
-  --bg-base:         #f4faf7;
+  /* Palette ispirata al tema "Senza Glutine" (Spiga barrata, calore, grano):
+     arancione scuro, ambra, verde, crema */
+  --bg-base:         #fffaf4;
   --bg-surface:      #ffffff;
   --bg-card:         #ffffff;
-  --bg-card-hover:   #eef8f3;
-  --bg-input:        #f0f9f5;
+  --bg-card-hover:   #fdf6ed;
+  --bg-input:        #fcf8f2;
 
-  --accent-primary:  #1aaa72;   /* teal-verde lattosio */
-  --accent-secondary:#0ea5bf;   /* azzurro cielo */
+  --accent-primary:  #e67e22;   /* arancione/ambra */
+  --accent-secondary:#d35400;   /* arancione intenso */
   --accent-green:    #16a34a;
   --accent-pink:     #e05a8a;
-  --accent-amber:    #d97706;
+  --accent-amber:    #b45309;
 
-  --text-primary:    #0f2d1e;
-  --text-secondary:  #3d6b54;
-  --text-muted:      #7aaa90;
+  --text-primary:    #2c1808;
+  --text-secondary:  #6b4120;
+  --text-muted:      #aa8262;
 
-  --border:          rgba(26, 170, 114, 0.15);
-  --border-active:   rgba(26, 170, 114, 0.5);
+  --border:          rgba(230, 126, 34, 0.15);
+  --border-active:   rgba(230, 126, 34, 0.5);
 
   --radius-sm:  8px;
   --radius-md:  14px;
   --radius-lg:  20px;
   --radius-xl:  28px;
 
-  --shadow-card: 0 2px 16px rgba(26, 170, 114, 0.1);
-  --shadow-glow: 0 0 32px rgba(26, 170, 114, 0.18);
+  --shadow-card: 0 2px 16px rgba(230, 126, 34, 0.1);
+  --shadow-glow: 0 0 32px rgba(230, 126, 34, 0.18);
 
   --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* header glass */
-  --header-bg: rgba(244, 250, 247, 0.88);
-  --header-border: rgba(26, 170, 114, 0.18);
+  --header-bg: rgba(255, 250, 244, 0.88);
+  --header-border: rgba(230, 126, 34, 0.18);
 }
 
 /* ---- DARK THEME ---- */
 html.dark {
-  --bg-base:         #0b1812;
-  --bg-surface:      #10201a;
-  --bg-card:         #152a20;
-  --bg-card-hover:   #1c3628;
-  --bg-input:        #1a3126;
+  --bg-base:         #18100b;
+  --bg-surface:      #201610;
+  --bg-card:         #2a1d15;
+  --bg-card-hover:   #36261c;
+  --bg-input:        #31221a;
 
-  --accent-primary:  #2ecc8e;
-  --accent-secondary:#38bdd6;
+  --accent-primary:  #f39c12;
+  --accent-secondary:#e67e22;
   --accent-green:    #34d399;
   --accent-pink:     #f472b6;
   --accent-amber:    #fbbf24;
 
-  --text-primary:    #e8faf3;
-  --text-secondary:  #7dcaad;
-  --text-muted:      #4a7a64;
+  --text-primary:    #faefe8;
+  --text-secondary:  #ca997d;
+  --text-muted:      #7a5a4a;
 
-  --border:          rgba(46, 204, 142, 0.12);
-  --border-active:   rgba(46, 204, 142, 0.45);
+  --border:          rgba(243, 156, 18, 0.12);
+  --border-active:   rgba(243, 156, 18, 0.45);
 
   --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 32px rgba(46, 204, 142, 0.2);
+  --shadow-glow: 0 0 32px rgba(243, 156, 18, 0.2);
 
-  --header-bg: rgba(11, 24, 18, 0.88);
-  --header-border: rgba(46, 204, 142, 0.18);
+  --header-bg: rgba(24, 16, 11, 0.88);
+  --header-border: rgba(243, 156, 18, 0.18);
 }
 
 html { scroll-behavior: smooth; }

@@ -14,62 +14,48 @@ export interface MappedTaxonomyResult {
  * e le categorie ufficiali del database Gluten Free.
  */
 const MOBILENET_TO_DATABASE_MAP: Record<string, { categoryId: Category; label: string; emoji: string }> = {
-  // Gelati
-  'ice cream': { categoryId: 'gelati', label: 'Gelati', emoji: '🍦' },
-  'ice lolly': { categoryId: 'gelati', label: 'Gelati', emoji: '🍦' },
-  'sorbet': { categoryId: 'gelati', label: 'Gelati', emoji: '🍦' },
+  // Cereali Alternativi
+  'quinoa': { categoryId: 'cereali-alternativi', label: 'Cereali Alternativi', emoji: '🌾' },
+  'buckwheat': { categoryId: 'cereali-alternativi', label: 'Cereali Alternativi', emoji: '🌾' },
+  'millet': { categoryId: 'cereali-alternativi', label: 'Cereali Alternativi', emoji: '🌾' },
+  'corn': { categoryId: 'cereali-alternativi', label: 'Cereali Alternativi', emoji: '🌽' },
 
-  // Formaggi & Spalmabili
-  'cheese': { categoryId: 'formaggi', label: 'Formaggi & Spalmabili', emoji: '🧀' },
-  'butter': { categoryId: 'formaggi', label: 'Formaggi & Spalmabili', emoji: '🧀' },
-  'cream': { categoryId: 'formaggi', label: 'Formaggi & Spalmabili', emoji: '🧀' },
+  // Pasta & Riso
+  'pasta': { categoryId: 'pasta-riso', label: 'Pasta & Riso', emoji: '🍝' },
+  'spaghetti': { categoryId: 'pasta-riso', label: 'Pasta & Riso', emoji: '🍝' },
+  'macaroni': { categoryId: 'pasta-riso', label: 'Pasta & Riso', emoji: '🍝' },
+  'rice': { categoryId: 'pasta-riso', label: 'Pasta & Riso', emoji: '🍚' },
+  'risotto': { categoryId: 'pasta-riso', label: 'Pasta & Riso', emoji: '🍚' },
 
-  // Yogurt & Dessert
-  'yogurt': { categoryId: 'yogurt-dessert', label: 'Yogurt & Dessert', emoji: '🫙' },
-  'yoghurt': { categoryId: 'yogurt-dessert', label: 'Yogurt & Dessert', emoji: '🫙' },
-  'pudding': { categoryId: 'yogurt-dessert', label: 'Yogurt & Dessert', emoji: '🫙' },
-  'trifle': { categoryId: 'yogurt-dessert', label: 'Yogurt & Dessert', emoji: '🫙' },
-  'custard': { categoryId: 'yogurt-dessert', label: 'Yogurt & Dessert', emoji: '🫙' },
-
-  // Alternative Vegetali & Bevande
-  'soy milk': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '🥛' },
-  'almond milk': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '🥛' },
-  'oat milk': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '🥛' },
-  'milk': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '🥛' },
-  'espresso': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '☕' },
-  'cup': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '🥛' },
-  'coffee mug': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '☕' },
-  'water bottle': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '🥤' },
+  // Pane & Prodotti da Forno
+  'bread': { categoryId: 'pane-prodotti-da-forno', label: 'Pane & Prodotti da Forno', emoji: '🍞' },
+  'baguette': { categoryId: 'pane-prodotti-da-forno', label: 'Pane & Prodotti da Forno', emoji: '🥖' },
+  'toast': { categoryId: 'pane-prodotti-da-forno', label: 'Pane & Prodotti da Forno', emoji: '🍞' },
+  'flatbread': { categoryId: 'pane-prodotti-da-forno', label: 'Pane & Prodotti da Forno', emoji: '🫓' },
+  'focaccia': { categoryId: 'pane-prodotti-da-forno', label: 'Pane & Prodotti da Forno', emoji: '🍞' },
 
   // Dolci & Biscotti
-  'pretzel': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🥨' },
-  'bagel': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍩' },
-  'bakery': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🥐' },
-  'dough': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍪' },
-  'chocolate sauce': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍫' },
-  'confectionery': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍬' },
-  'strawberry': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍓' },
-  'banana': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍌' },
+  'cookie': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍪' },
+  'biscuit': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍪' },
+  'cake': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🍰' },
+  'muffin': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🧁' },
+  'pastry': { categoryId: 'dolci-biscotti', label: 'Dolci & Biscotti', emoji: '🥐' },
 
   // Piatti Pronti
-  'cheeseburger': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍔' },
-  'hotdog': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🌭' },
   'pizza': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍕' },
-  'burrito': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🌯' },
-  'taco': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🌮' },
-  'spaghetti squash': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍝' },
-  'carbonara': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍝' },
-  'potpie': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🥧' },
-  'meat loaf': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🥩' },
-  'mashed potato': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🥔' },
-  'soup bowl': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍲' },
-  'consomme': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍲' },
+  'lasagna': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍝' },
+  'burger': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍔' },
+  'ready meal': { categoryId: 'piatti-pronti', label: 'Piatti Pronti', emoji: '🍱' },
+
+  // Snack Salati
+  'pretzel': { categoryId: 'snack-salati', label: 'Snack Salati', emoji: '🥨' },
+  'cracker': { categoryId: 'snack-salati', label: 'Snack Salati', emoji: '🍘' },
+  'chips': { categoryId: 'snack-salati', label: 'Snack Salati', emoji: '🍟' },
+  'snack': { categoryId: 'snack-salati', label: 'Snack Salati', emoji: '🍿' },
 
   // Prodotti Generici / Packaging
   'packet': { categoryId: 'personalizzato', label: 'Prodotto Confezionato', emoji: '📦' },
-  'carton': { categoryId: 'alternative-vegetali', label: 'Alternative Vegetali', emoji: '🥛' },
-  'can': { categoryId: 'personalizzato', label: 'Personalizzato', emoji: '🥫' },
-  'bottle': { categoryId: 'personalizzato', label: 'Personalizzato', emoji: '🍾' },
+  'box': { categoryId: 'personalizzato', label: 'Prodotto in Scatola', emoji: '📦' },
   'grocery store': { categoryId: 'personalizzato', label: 'Alimentari', emoji: '🛒' },
 };
 
@@ -148,16 +134,12 @@ export function classifyAndMapCategory(
 }
 
 export const ZERO_SHOT_FOOD_CANDIDATES = [
-  { id: 'formaggi' as Category, label: 'a photo of cheese packaging, ricotta tub, mozzarella cup, dairy cheese product', emoji: '🧀', display: 'Formaggi & Spalmabili', color: '#d97706' },
-  { id: 'yogurt-dessert' as Category, label: 'a photo of yogurt cup, fruit dessert tub, pudding pot, dairy free yogurt cup', emoji: '🫙', display: 'Yogurt & Dessert', color: '#16a34a' },
-  { id: 'alternative-vegetali' as Category, label: 'a photo of plant milk carton, soy milk bottle, oat milk container, dairy free drink', emoji: '🥛', display: 'Alternative Vegetali', color: '#7c3aed' },
-  { id: 'gelati' as Category, label: 'a photo of ice cream tub, gelato box, ice lolly popsicle, frozen dessert', emoji: '🍦', display: 'Gelati', color: '#0891b2' },
-  { id: 'dolci-biscotti' as Category, label: 'a photo of cookies package, sweet biscuits bag, cake box, bakery snacks', emoji: '🍪', display: 'Dolci & Biscotti', color: '#be185d' },
-  { id: 'salumi-carni' as Category, label: 'a photo of sliced meat package, cold cuts ham tray, sausages pack, plant meat', emoji: '🥓', display: 'Salumi & Carni', color: '#dc2626' },
-  { id: 'pane-lievitati' as Category, label: 'a photo of sliced bread loaf, crackers package, breadsticks box, flatbread bag', emoji: '🍞', display: 'Pane & Lievitati', color: '#d97706' },
-  { id: 'pasta-cereali' as Category, label: 'a photo of dry pasta bag, rice package, breakfast cereal box, oats packet', emoji: '🍝', display: 'Pasta & Cereali', color: '#ca8a04' },
-  { id: 'piatti-pronti' as Category, label: 'a photo of frozen pizza box, ready meal tray, veggie burger box, prepared food', emoji: '🍳', display: 'Piatti Pronti', color: '#b45309' },
-  { id: 'condimenti-salse' as Category, label: 'a photo of olive oil glass bottle, tomato sauce jar, mayonnaise tube, condiment', emoji: '🫒', display: 'Condimenti & Salse', color: '#65a30d' },
+  { id: 'cereali-alternativi' as Category, label: 'a photo of alternative grains, quinoa, buckwheat bag, corn, gluten free cereal', emoji: '🌾', display: 'Cereali Alternativi', color: '#7c3aed' },
+  { id: 'pasta-riso' as Category, label: 'a photo of dry pasta bag, spaghetti, macaroni, rice package, gluten free pasta', emoji: '🍝', display: 'Pasta & Riso', color: '#d97706' },
+  { id: 'pane-prodotti-da-forno' as Category, label: 'a photo of sliced bread loaf, bread rolls, baguette, gluten free bread, flatbread', emoji: '🍞', display: 'Pane & Prodotti da Forno', color: '#16a34a' },
+  { id: 'dolci-biscotti' as Category, label: 'a photo of cookies package, sweet biscuits bag, cake box, bakery snacks, gluten free sweets', emoji: '🍪', display: 'Dolci & Biscotti', color: '#be185d' },
+  { id: 'piatti-pronti' as Category, label: 'a photo of frozen pizza box, ready meal tray, lasagna, prepared food', emoji: '🍳', display: 'Piatti Pronti', color: '#0891b2' },
+  { id: 'snack-salati' as Category, label: 'a photo of potato chips bag, crackers package, pretzels, savory snacks, breadsticks', emoji: '🥨', display: 'Snack Salati', color: '#b45309' },
 ];
 
 export function mapZeroShotPrediction(predictions: Array<{ label: string; score: number }>) {
@@ -183,34 +165,22 @@ export function fuseVisionAndText(
       textBoost += 0.35;
     }
 
-    if (cand.id === 'yogurt-dessert' && /yogurt|yoghurt|kefir|bifidus|budino|dessert|zymil|fermentato|pudding|mousse|merano|sojasun|activia|bella vita|mirtill|fragol|banana|vaniglia/i.test(cleanText)) {
+    if (cand.id === 'cereali-alternativi' && /quinoa|grano saraceno|miglio|amaranto|mais|sorgo|teff|avena|cereali/i.test(cleanText)) {
       textBoost += 0.25;
     }
-    if (cand.id === 'formaggi' && /formaggio|cheese|caciot|mozzarell|burr|ricott|stracchino|crescenza|robiola|spalmabile|sottilette|grattugiato|mascarpone|provola|scamorza|gorgonzola|fiocchi|fettine|violife|vemondo|philadelphia|burrata|tomino|edam|gouda|emmental|pecorino|grana|parmigiano|vallelata|galbani/i.test(cleanText)) {
+    if (cand.id === 'pasta-riso' && /pasta|spaghett|penn|fusill|maccheron|gnocch|riso|lasagne|noodle|tortellini|ravioli/i.test(cleanText)) {
       textBoost += 0.25;
     }
-    if (cand.id === 'alternative-vegetali' && /bevanda.*soia|bevanda.*riso|bevanda.*avena|bevanda.*mandorla|bevanda.*cocco|latte|soya|soia drink|oat drink|almond drink|rice drink|alpro|valsoia/i.test(cleanText)) {
+    if (cand.id === 'pane-prodotti-da-forno' && /pane|panino|panbauletto|panfette|baguette|rosetta|piadin|focacc|toast|schiacciata/i.test(cleanText)) {
       textBoost += 0.25;
     }
-    if (cand.id === 'gelati' && /gelato|ice cream|sorbetto|cremeria|magnum|cucciolone|stecco|tartufo|granita|cono/i.test(cleanText)) {
+    if (cand.id === 'dolci-biscotti' && /biscott|frollin|cookie|biscuit|wafer|cake|torta|crostata|muffin|madeleine|cornett|brioche|merenda|cioccolat|panettone/i.test(cleanText)) {
       textBoost += 0.25;
     }
-    if (cand.id === 'dolci-biscotti' && /biscott|frollin|cookie|biscuit|wafer|cake|torta|crostata|muffin|madeleine|cornett|brioche|merenda|cioccolat|cacao|brownie|panettone|pandoro|mulino bianco/i.test(cleanText)) {
+    if (cand.id === 'piatti-pronti' && /pizza|burger|lasagna pronta|piatto pronto|meal|zuppa|soup/i.test(cleanText)) {
       textBoost += 0.25;
     }
-    if (cand.id === 'salumi-carni' && /prosciutt|salum|mortadell|pancett|speck|wurstel|wrustel|carn|bresaol|pollo|tacchino|suino|manzo|vitello|salam|affettat|bacon/i.test(cleanText)) {
-      textBoost += 0.25;
-    }
-    if (cand.id === 'pane-lievitati' && /pane|panino|panbauletto|panfette|grissin|cracker|piadin|focacc|lievitat|tarall|baguette|toast|rosetta|schiacciata/i.test(cleanText)) {
-      textBoost += 0.25;
-    }
-    if (cand.id === 'pasta-cereali' && /past|spaghett|penn|fusill|maccheron|gnocch|riso|farro|orzo|granola|muesli|cereali|fiocchi/i.test(cleanText)) {
-      textBoost += 0.25;
-    }
-    if (cand.id === 'piatti-pronti' && /burger|pizza|lasagna|ravioli|tortellini|zuppa|soup|cotoletta|nugget|piatto pronto|meal|risotto/i.test(cleanText)) {
-      textBoost += 0.25;
-    }
-    if (cand.id === 'condimenti-salse' && /olio|aceto|sals|maiones|ket|senap|pesto|spezi|condiment|dado|brodo/i.test(cleanText)) {
+    if (cand.id === 'snack-salati' && /cracker|grissin|tarall|gallett|chips|patatine|snack|pretzel|salatini/i.test(cleanText)) {
       textBoost += 0.25;
     }
 
