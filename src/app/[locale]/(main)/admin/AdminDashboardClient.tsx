@@ -26,8 +26,11 @@ type CategoryItem = {
   count: number;
 };
 
+// ─── File Import Types ──────────────────────────────────────────────────────
+type FileImportLog = { time: string; text: string; type: 'info' | 'success' | 'error' };
+
 export default function AdminDashboardClient() {
-  const [activeTab, setActiveTab] = useState<'products' | 'images' | 'categories'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'images' | 'categories' | 'file-import'>('products');
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<Product[]>([]);
@@ -62,6 +65,22 @@ export default function AdminDashboardClient() {
   const [isLoadingCatProducts, setIsLoadingCatProducts] = useState(false);
   const [classifyingProductId, setClassifyingProductId] = useState<string | null>(null);
   const [singleAiResultModal, setSingleAiResultModal] = useState<any | null>(null);
+
+  // Pipeline state (Import da Dump OFF)
+  type PhaseStatus = 'idle' | 'running' | 'done' | 'skipped' | 'error' | 'cancelled';
+  type PhaseState = { status: PhaseStatus; pct: number; message: string; stats?: Record<string, any> };
+  const makePhase = (): PhaseState => ({ status: 'idle', pct: 0, message: '' });
+
+  const [offDir, setOffDir] = useState('');
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [pipelinePaused, setPipelinePaused] = useState(false);
+  const [pipelineDone, setPipelineDone] = useState(false);
+  const [resumeFromPhase, setResumeFromPhase] = useState(1);
+  const [phaseStates, setPhaseStates] = useState<PhaseState[]>([makePhase(), makePhase(), makePhase()]);
+  const [pipelineLog, setPipelineLog] = useState<FileImportLog[]>([]);
+  const [pipelineTotal, setPipelineTotal] = useState(0);
+  const abortCtrlRef = useRef<AbortController | null>(null);
+  const pipelineLogEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -381,6 +400,146 @@ export default function AdminDashboardClient() {
     setMessage({ type: 'info', text: '⏸ Sincronizzazione automatica interrotta.' });
   };
 
+  // ─── Pipeline OFF (unified) ──────────────────────────────────────────
+
+  const addPipelineLog = (text: string, type: FileImportLog['type'] = 'info') => {
+    const time = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setPipelineLog(prev => [...prev.slice(-299), { time, text, type }]);
+    setTimeout(() => pipelineLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+  };
+
+  const updatePhase = (idx: number, updates: Partial<PhaseState>) => {
+    setPhaseStates(prev => prev.map((p, i) => i === idx ? { ...p, ...updates } : p) as PhaseState[]);
+  };
+
+
+  const startPipeline = async (startFromPhase = 1, forceRestart = false) => {
+    if (!offDir.trim()) {
+      setMessage({ type: 'error', text: '❌ Specifica prima la cartella di lavoro' });
+      return;
+    }
+    const ctrl = new AbortController();
+    abortCtrlRef.current = ctrl;
+    setPipelineRunning(true);
+    setPipelinePaused(false);
+    setPipelineDone(false);
+    if (startFromPhase === 1) {
+      setPipelineLog([]);
+      setPipelineTotal(0);
+      setPhaseStates([{ status: 'idle', pct: 0, message: '' }, { status: 'idle', pct: 0, message: '' }, { status: 'idle', pct: 0, message: '' }]);
+    }
+    addPipelineLog(`🚀 Avvio pipeline (Fase ${startFromPhase}/3)...`, 'info');
+
+    const readSSE = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const evMatch = part.match(/^event: (\S+)/);
+          const dataMatch = part.match(/^data: (.+)$/m);
+          if (!evMatch || !dataMatch) continue;
+          let data: any = {};
+          try { data = JSON.parse(dataMatch[1]); } catch { continue; }
+          const ev = evMatch[1];
+
+          if (ev === 'phase_start') {
+            const idx = data.phase - 1;
+            updatePhase(idx, { status: data.skipped ? 'skipped' : 'running', pct: data.skipped ? 100 : 0, message: data.message || '' });
+            if (!data.skipped) addPipelineLog(data.message || `Fase ${data.phase} avviata`, 'info');
+          } else if (ev === 'phase_done') {
+            const idx = data.phase - 1;
+            updatePhase(idx, { status: data.skipped ? 'skipped' : 'done', pct: 100, message: data.message || '', stats: data });
+            addPipelineLog(data.message || `Fase ${data.phase} completata`, data.skipped ? 'info' : 'success');
+            setResumeFromPhase(data.phase + 1);
+          } else if (ev === 'phase_skip') {
+            const idx = data.phase - 1;
+            updatePhase(idx, { status: 'skipped', pct: 100, message: data.message || '' });
+          } else if (ev === 'progress') {
+            const idx = (data.phase || 1) - 1;
+            updatePhase(idx, { pct: data.pct ?? -1, message: data.message || '' });
+            if (data.totalImported !== undefined) setPipelineTotal(data.totalImported);
+            // Log ogni progress che contiene dati importanti
+            if (data.message) addPipelineLog(data.message, 'info');
+          } else if (ev === 'cancelled') {
+            const idx = data.phase ? data.phase - 1 : 2;
+            updatePhase(idx, { status: 'cancelled', message: data.message || '' });
+            if (data.resumeFromPhase) setResumeFromPhase(data.resumeFromPhase);
+            if (data.totalImported !== undefined) setPipelineTotal(data.totalImported);
+            addPipelineLog(data.message || '⏸ Pipeline interrotta', 'info');
+            setPipelineRunning(false);
+            setPipelinePaused(true);
+            return;
+          } else if (ev === 'done') {
+            if (data.totalImported !== undefined) setPipelineTotal(data.totalImported);
+            updatePhase(2, { status: 'done', pct: 100 });
+            addPipelineLog(data.message || '🎉 Completato!', 'success');
+            setMessage({ type: 'success', text: `✅ ${data.totalImported?.toLocaleString('it-IT')} prodotti importati!` });
+            fetchLocalProducts(1, pageSize);
+            setPipelineRunning(false);
+            setPipelineDone(true);
+            return;
+          } else if (ev === 'error') {
+            addPipelineLog('❌ ' + (data.message || 'Errore sconosciuto'), 'error');
+            setMessage({ type: 'error', text: `❌ ${data.message}` });
+            setPhaseStates(prev => prev.map(p => p.status === 'running' ? { ...p, status: 'error' } : p));
+            setPipelineRunning(false);
+            return;
+          }
+        }
+      }
+    };
+
+    try {
+      const res = await fetch('/api/admin/off-pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outputDir: offDir, startFromPhase, forceRestart }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) throw new Error(`Errore avvio pipeline: HTTP ${res.status}`);
+      await readSSE(res.body.getReader());
+      
+      // Se lo stream si chiude improvvisamente (es. network error), riportiamo lo stato a fermo
+      setPipelineRunning(prev => {
+        if (prev) {
+          addPipelineLog('⚠️ Connessione al server interrotta inaspettatamente.', 'error');
+          return false;
+        }
+        return prev;
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        // Cancellazione voluta dall'utente — il server gestisce la risposta via cancelled event
+        return;
+      }
+      addPipelineLog('❌ Errore critico: ' + err.message, 'error');
+      setMessage({ type: 'error', text: err.message });
+      setPipelineRunning(false);
+    }
+  };
+
+  const pausePipeline = () => {
+    abortCtrlRef.current?.abort();
+    addPipelineLog('⏸ Richiesta di pausa inviata al server...', 'info');
+  };
+
+  const cancelPipeline = () => {
+    abortCtrlRef.current?.abort();
+    setPipelineRunning(false);
+    setPipelinePaused(false);
+    setPipelineDone(false);
+    setResumeFromPhase(1);
+    setPhaseStates([{ status: 'idle', pct: 0, message: '' }, { status: 'idle', pct: 0, message: '' }, { status: 'idle', pct: 0, message: '' }]);
+    setPipelineLog([]);
+    setPipelineTotal(0);
+    addPipelineLog('❌ Pipeline annullata e reimpostata.', 'error');
+  };
+
   // ─── Categories ────────────────────────────────────────────────────
 
   const handleRunAutoCategorization = async (onlyCustom = false) => {
@@ -607,7 +766,7 @@ export default function AdminDashboardClient() {
   return (
     <div>
       {/* Navigation Tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid var(--border-color)', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid var(--border-color)', marginBottom: '2rem', flexWrap: 'wrap' }}>
         <button id="tab-products" onClick={() => setActiveTab('products')} style={tabStyle('products', '#3b82f6')}>
           <span>📦</span> Catalogo & Import
         </button>
@@ -621,6 +780,9 @@ export default function AdminDashboardClient() {
         </button>
         <button id="tab-categories" onClick={() => setActiveTab('categories')} style={tabStyle('categories', '#10b981')}>
           <span>🏷️</span> Categorie
+        </button>
+        <button id="tab-file-import" onClick={() => setActiveTab('file-import')} style={tabStyle('file-import', '#8b5cf6')}>
+          <span>📂</span> Import da File OFF
         </button>
       </div>
 
@@ -1272,6 +1434,331 @@ export default function AdminDashboardClient() {
           )}
         </div>
       )}
+
+      {/* ── TAB 4: PIPELINE OFF ───────────────────────────────────────── */}
+      {activeTab === 'file-import' && (() => {
+        const PHASE_META = [
+          { icon: '⬇️', label: 'Download Dump', color: '#3b82f6' },
+          { icon: '🔍', label: 'Filtraggio GF', color: '#f59e0b' },
+          { icon: '💾', label: 'Import DB',     color: '#8b5cf6' },
+        ];
+        const statusColor = (s: string) =>
+          s === 'done' ? '#10b981' : s === 'running' ? '#3b82f6' : s === 'error' ? '#ef4444' :
+          s === 'cancelled' ? '#f59e0b' : s === 'skipped' ? '#6b7280' : '#374151';
+        const statusIcon = (s: string) =>
+          s === 'done' ? '✅' : s === 'running' ? '🔄' : s === 'error' ? '❌' :
+          s === 'cancelled' ? '⏸️' : s === 'skipped' ? '⏭️' : '○';
+        const currentRunningPhase = phaseStates.findIndex(p => p.status === 'running');
+        const overallPct = (() => {
+          const done = phaseStates.filter(p => p.status === 'done' || p.status === 'skipped').length;
+          const running = currentRunningPhase >= 0 ? phaseStates[currentRunningPhase].pct : 0;
+          return Math.round((done * 100 + (running >= 0 ? running : 0)) / 3);
+        })();
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+
+            {/* Header */}
+            <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #1e1b4b22, #8b5cf622)', borderRadius: '1rem', border: '1px solid #8b5cf644' }}>
+              <h2 style={{ margin: '0 0 0.4rem', fontSize: '1.3rem', color: '#a78bfa' }}>📦 Pipeline Import Offline — OpenFoodFacts</h2>
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.7 }}>
+                Un click per scaricare il dump OFF, filtrare i prodotti
+                <strong style={{ color: '#a78bfa' }}> gluten-free italiani</strong> e importarli nel DB.
+                Il dump viene salvato localmente e riutilizzato nei run successivi.
+              </p>
+            </div>
+
+            {/* Cartella */}
+            <div style={{ padding: '1.25rem', background: 'var(--surface)', borderRadius: '0.75rem', border: '1px solid var(--border-color)' }}>
+              <label htmlFor="pipeline-dir" style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                📁 Cartella di lavoro (percorso assoluto)
+              </label>
+              <input
+                id="pipeline-dir"
+                type="text"
+                value={offDir}
+                onChange={e => setOffDir(e.target.value)}
+                disabled={pipelineRunning}
+                placeholder="es. C:/Downloads/off-data  o  /home/user/off-data"
+                style={{
+                  width: '100%', padding: '0.75rem 1rem', borderRadius: '0.5rem',
+                  border: `1px solid ${!offDir.trim() && !pipelineRunning ? '#ef4444' : 'var(--border-color)'}`,
+                  background: 'var(--bg)', color: 'var(--text-primary)',
+                  fontFamily: 'monospace', fontSize: '0.95rem', boxSizing: 'border-box'
+                }}
+              />
+              <p style={{ margin: '0.4rem 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                Il dump ({'>'}25 GB) e il file filtrato ({'{'}~100 MB{'}'}) verranno salvati in questa cartella.
+                Se il dump esiste già, il download viene saltato automaticamente.
+              </p>
+            </div>
+
+            {/* Fase indicator */}
+            <div style={{ padding: '1.5rem', background: 'var(--surface)', borderRadius: '0.75rem', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0', marginBottom: '1.5rem' }}>
+                {PHASE_META.map((meta, i) => {
+                  const ph = phaseStates[i];
+                  const col = ph.status === 'idle' ? '#374151' : statusColor(ph.status);
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                      <div style={{
+                        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem',
+                        padding: '0.85rem 0.5rem',
+                        borderRadius: '0.6rem',
+                        background: ph.status === 'running' ? `${meta.color}18` : 'transparent',
+                        border: ph.status === 'running' ? `1.5px solid ${meta.color}44` : '1.5px solid transparent',
+                        transition: 'all 0.3s'
+                      }}>
+                        <div style={{ fontSize: '1.6rem' }}>{meta.icon}</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: col, textAlign: 'center' }}>{meta.label}</div>
+                        <div style={{
+                          fontSize: '0.72rem', fontWeight: 700,
+                          color: col,
+                          background: `${col}20`,
+                          padding: '0.15rem 0.6rem', borderRadius: '999px',
+                          border: `1px solid ${col}44`
+                        }}>
+                          {statusIcon(ph.status)}
+                          {ph.status === 'running' && ph.pct >= 0 ? ` ${ph.pct}%` : ''}
+                          {ph.status === 'idle' ? ' In attesa' : ''}
+                          {ph.status === 'done' ? ' Fatto' : ''}
+                          {ph.status === 'skipped' ? ' Saltato' : ''}
+                          {ph.status === 'error' ? ' Errore' : ''}
+                          {ph.status === 'cancelled' ? ' Sospeso' : ''}
+                        </div>
+                        {ph.status === 'running' && (
+                          <div style={{ width: '90%', height: '4px', background: 'var(--border-color)', borderRadius: '2px', overflow: 'hidden' }}>
+                            <div style={{
+                              height: '100%',
+                              width: ph.pct >= 0 ? `${ph.pct}%` : '100%',
+                              background: `linear-gradient(90deg, ${meta.color}, ${meta.color}aa)`,
+                              borderRadius: '2px',
+                              transition: 'width 0.5s ease',
+                              animation: ph.pct < 0 ? 'indeterminate 1.5s infinite linear' : 'none'
+                            }} />
+                          </div>
+                        )}
+                        {ph.message && ph.status !== 'idle' && (
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textAlign: 'center', maxWidth: '120px', lineHeight: 1.3 }}>
+                            {ph.message.slice(0, 60)}{ph.message.length > 60 ? '…' : ''}
+                          </div>
+                        )}
+                      </div>
+                      {i < 2 && (
+                        <div style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', margin: '0 0.25rem', flexShrink: 0 }}>→</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Overall progress bar */}
+              {(pipelineRunning || pipelinePaused || pipelineDone) && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                    <span>Progresso complessivo</span>
+                    <span style={{ color: pipelineDone ? '#10b981' : '#8b5cf6' }}>{overallPct}%</span>
+                  </div>
+                  <div style={{ width: '100%', height: '10px', background: 'var(--border-color)', borderRadius: '5px', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${overallPct}%`,
+                      background: pipelineDone
+                        ? 'linear-gradient(90deg, #10b981, #059669)'
+                        : pipelinePaused
+                          ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                          : 'linear-gradient(90deg, #3b82f6, #8b5cf6)',
+                      borderRadius: '5px',
+                      transition: 'width 0.5s ease'
+                    }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Statistiche import */}
+              {pipelineTotal > 0 && (
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  <div style={{ padding: '0.6rem 1rem', background: '#8b5cf618', borderRadius: '0.5rem', border: '1px solid #8b5cf644' }}>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Importati: </span>
+                    <strong style={{ color: '#8b5cf6' }}>{pipelineTotal.toLocaleString('it-IT')}</strong>
+                  </div>
+                </div>
+              )}
+
+              {/* Controlli */}
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                {!pipelineRunning && !pipelinePaused && !pipelineDone && (
+                  <>
+                    <button
+                      id="btn-start-pipeline"
+                      onClick={() => startPipeline(1)}
+                      disabled={!offDir.trim()}
+                      style={{
+                        padding: '0.85rem 2rem', borderRadius: '0.6rem', border: 'none',
+                        background: offDir.trim() ? 'linear-gradient(135deg, #6d28d9, #8b5cf6)' : '#374151',
+                        color: '#fff', fontWeight: 800, fontSize: '1rem',
+                        cursor: offDir.trim() ? 'pointer' : 'not-allowed',
+                        boxShadow: offDir.trim() ? '0 4px 14px #8b5cf655' : 'none',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      ▶️ Avvia / Riprendi
+                    </button>
+                    <button
+                      id="btn-restart-pipeline"
+                      onClick={() => {
+                        if (confirm('Sei sicuro? Questo eliminerà eventuali file parziali o precedenti scaricati e ricomincerà tutto da capo.')) {
+                          startPipeline(1, true);
+                        }
+                      }}
+                      disabled={!offDir.trim()}
+                      style={{
+                        padding: '0.85rem 1.5rem', borderRadius: '0.6rem', border: '1px solid #ef4444',
+                        background: 'transparent', color: '#ef4444', fontWeight: 700, fontSize: '0.95rem',
+                        cursor: offDir.trim() ? 'pointer' : 'not-allowed',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      🗑️ Riavvia da zero
+                    </button>
+                  </>
+                )}
+                {pipelineRunning && (
+                  <>
+                    <button
+                      id="btn-pause-pipeline"
+                      onClick={pausePipeline}
+                      style={{
+                        padding: '0.85rem 1.5rem', borderRadius: '0.6rem', border: 'none',
+                        background: '#f59e0b', color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer'
+                      }}
+                    >
+                      ⏸️ Pausa
+                    </button>
+                    <button
+                      id="btn-cancel-pipeline"
+                      onClick={cancelPipeline}
+                      style={{
+                        padding: '0.85rem 1.5rem', borderRadius: '0.6rem', border: '1px solid #ef4444',
+                        background: 'transparent', color: '#ef4444', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer'
+                      }}
+                    >
+                      ✖️ Annulla
+                    </button>
+                  </>
+                )}
+                {pipelinePaused && (
+                  <>
+                    <button
+                      id="btn-resume-pipeline"
+                      onClick={() => startPipeline(resumeFromPhase)}
+                      style={{
+                        padding: '0.85rem 1.75rem', borderRadius: '0.6rem', border: 'none',
+                        background: 'linear-gradient(135deg, #059669, #10b981)',
+                        color: '#fff', fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer',
+                        boxShadow: '0 4px 12px #10b98155'
+                      }}
+                    >
+                      ▶️ Riprendi (Fase {resumeFromPhase})
+                    </button>
+                    <button
+                      id="btn-cancel-after-pause"
+                      onClick={cancelPipeline}
+                      style={{
+                        padding: '0.85rem 1.5rem', borderRadius: '0.6rem', border: '1px solid #ef4444',
+                        background: 'transparent', color: '#ef4444', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer'
+                      }}
+                    >
+                      ❌ Annulla
+                    </button>
+                  </>
+                )}
+                {pipelineDone && (
+                  <>
+                    <div style={{ padding: '0.6rem 1.25rem', background: '#10b98118', borderRadius: '0.5rem', border: '1px solid #10b981', color: '#10b981', fontWeight: 700 }}>
+                      🎉 Completato!
+                    </div>
+                    <button
+                      onClick={cancelPipeline}
+                      style={{ padding: '0.85rem 1.5rem', borderRadius: '0.6rem', border: '1px solid var(--border-color)', background: 'var(--bg)', color: 'var(--text-primary)', fontWeight: 600, cursor: 'pointer', fontSize: '0.95rem' }}
+                    >
+                      🔄 Nuovo Import
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Log Console */}
+            {pipelineLog.length > 0 && (
+              <div style={{ padding: '1.25rem', background: 'var(--surface)', borderRadius: '0.75rem', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-secondary)' }}>📝 Log Pipeline</h3>
+                  <button
+                    onClick={() => setPipelineLog([])}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem' }}
+                  >
+                    Pulisci
+                  </button>
+                </div>
+                <div style={{
+                  background: '#0a0f1e', borderRadius: '0.5rem', padding: '1rem',
+                  maxHeight: '340px', overflowY: 'auto',
+                  fontFamily: 'Consolas, Monaco, monospace', fontSize: '0.79rem', lineHeight: 1.65
+                }}>
+                  {pipelineLog.map((log, i) => (
+                    <div key={i} style={{
+                      color: log.type === 'success' ? '#4ade80' : log.type === 'error' ? '#f87171' : '#94a3b8',
+                      marginBottom: '0.1rem', display: 'flex', gap: '0.75rem'
+                    }}>
+                      <span style={{ color: '#334155', flexShrink: 0, userSelect: 'none' }}>[{log.time}]</span>
+                      <span>{log.text}</span>
+                    </div>
+                  ))}
+                  <div ref={pipelineLogEndRef} />
+                </div>
+              </div>
+            )}
+
+            {/* Info collassabile */}
+            <details style={{ padding: '1rem 1.25rem', background: 'var(--surface)', borderRadius: '0.75rem', border: '1px solid #8b5cf633' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', color: '#a78bfa', userSelect: 'none' }}>
+                ℹ️ Come funziona la pipeline?
+              </summary>
+              <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                <p style={{ margin: 0 }}>
+                  <strong style={{ color: '#3b82f6' }}>⬇️ Fase 1 — Download:</strong> scarica
+                  <code> openfoodfacts-products.jsonl.gz</code> (~25-40 GB) nella cartella.
+                  Se il file esiste già, questa fase viene saltata automaticamente.
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong style={{ color: '#f59e0b' }}>🔍 Fase 2 — Filtraggio:</strong> legge il dump in streaming,
+                  filtra i prodotti con <code>labels_tags ⊇ (en:gluten-free OR en:no-gluten)</code>
+                  AND <code>allergens_tags ⊄ en:gluten</code> AND <code>countries_tags ⊇ en:italy</code>
+                  e scrive <code>gluten-free-products.jsonl</code> (~100 MB).
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong style={{ color: '#8b5cf6' }}>💾 Fase 3 — Import DB:</strong> legge il file filtrato e
+                  fa upsert nel database a batch da 500 prodotti. Idempotente: rieseguire non crea duplicati.
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong>Pausa/Riprendi:</strong> la pausa ferma il server. Riprendendo,
+                  le fasi già completate vengono saltate. L&apos;import è idempotente quindi sicuro da rieseguire.
+                </p>
+              </div>
+            </details>
+
+            <style>{`
+              @keyframes indeterminate {
+                0% { transform: translateX(-100%); width: 30%; }
+                100% { transform: translateX(400%); width: 30%; }
+              }
+            `}</style>
+
+          </div>
+        );
+      })()}
     </div>
   );
 }
+
